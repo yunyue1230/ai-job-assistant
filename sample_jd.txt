@@ -1,0 +1,14 @@
+We are looking for an AI Product Intern.
+
+Requirements:
+- Python
+- LLM applications
+- RAG and prompt engineering
+- Good communication skills
+- Experience building AI applications
+
+Responsibilities:
+- Build AI product demos
+- Work with product and engineering teams
+- Help prototype ML and LLM features
+- Conduct user research and improve AI workflows

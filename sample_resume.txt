@@ -1,0 +1,14 @@
+EDUCATION
+Computer Science, BSc
+
+PROJECTS
+- Built a diffusion model for image super-resolution using Python and PyTorch.
+- Fine-tuned a custom model on a training dataset and evaluated model quality.
+- Developed a chatbot prototype in Python using prompt engineering and LLM APIs.
+- Built a data analysis pipeline to explore user behavior and present findings.
+
+SKILLS
+- Python, PyTorch, Machine Learning, Data Analysis
+- Basic LLM API integration
+- Teamwork and communication
+- Presentation and project reporting
