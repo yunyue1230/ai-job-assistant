@@ -7,22 +7,31 @@
     "model": "deepseek-chat",
     "dataset": "/Users/caoyuerong/Documents/CU-MSc/self-project/ai-job-assistant/evals/datasets/interview_scoring.jsonl",
     "sample_count": 16,
-    "created_at": "2026-10-30T01:41:49Z",
-    "git_sha": "4a0af927eeb0bddd8b9a9e12687ffab4ccdf2dd7",
+    "created_at": "2026-10-30T02:20:20Z",
+    "git_sha": "667d68728e3b3e7b474d914d752f9004f85f6165",
     "snapshot": "/Users/caoyuerong/Documents/CU-MSc/self-project/ai-job-assistant/evals/snapshots/interview_scoring.deepseek-chat.latest.jsonl",
-    "notes": "baseline: 16 questions x 4 tiers, repeats=3"
+    "notes": "with targeted schema retry (is-09)",
+    "provider_stats": {
+      "calls": 97,
+      "json_parsing_failures": 0,
+      "schema_validation_failures": 1,
+      "retries": 1,
+      "retry_successes": 1,
+      "final_failures": 0,
+      "retry_latency_seconds": 2.09
+    }
   },
   "metrics": {
     "samples": 16,
-    "schema_valid_rate": 0.9375,
+    "schema_valid_rate": 1.0,
     "discrimination_rate": 1.0,
-    "mean_gap": 70.8,
+    "mean_gap": 70.0625,
     "median_good_score": 88.0,
     "score_spread_median": 0.0,
     "median_medium_score": 55.0,
-    "mean_good_medium_gap": 32.86666666666667,
-    "median_off_topic_score": 20.0,
-    "median_bad_score": 15.0,
+    "mean_good_medium_gap": 32.5625,
+    "median_off_topic_score": 18.0,
+    "median_bad_score": 16.5,
     "tier_order_rate": 1.0
   }
 }
