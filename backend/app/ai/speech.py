@@ -20,7 +20,7 @@ from dashscope.audio.qwen_tts_realtime import (
 
 from backend.app.core.config import get_settings
 
-DASHSCOPE_REALTIME_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+DEFAULT_REALTIME_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
 
 
 class _AsrCallback(OmniRealtimeCallback):
@@ -76,7 +76,7 @@ class RealtimeSpeechService:
         conversation = OmniRealtimeConversation(
             model=self._settings.qwen_asr_model,
             callback=callback,
-            url=DASHSCOPE_REALTIME_URL,
+            url=self._settings.qwen_realtime_url or DEFAULT_REALTIME_URL,
             api_key=self._settings.ai_bailian_api_key,
         )
         self._asr = conversation

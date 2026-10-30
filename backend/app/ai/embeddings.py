@@ -30,10 +30,13 @@ def embedding_provider_is_configured() -> bool:
 
 
 class EmbeddingService:
-    def __init__(self, client: OpenAI, model: str, dimensions: int) -> None:
+    def __init__(
+        self, client: OpenAI, model: str, dimensions: int, batch_size: int = 64
+    ) -> None:
         self.client = client
         self.model = model
         self.dimensions = dimensions
+        self.batch_size = batch_size
 
     @classmethod
     def from_settings(cls) -> "EmbeddingService":
@@ -43,14 +46,19 @@ class EmbeddingService:
             api_key=api_key,
             base_url=base_url,
         )
-        return cls(client, model, settings.embedding_dimensions)
+        return cls(
+            client,
+            model,
+            settings.embedding_dimensions,
+            settings.embedding_batch_size,
+        )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
         vectors: list[list[float]] = []
-        for offset in range(0, len(texts), 64):
-            batch = texts[offset : offset + 64]
+        for offset in range(0, len(texts), self.batch_size):
+            batch = texts[offset : offset + self.batch_size]
             response = self.client.embeddings.create(
                 model=self.model,
                 input=batch,

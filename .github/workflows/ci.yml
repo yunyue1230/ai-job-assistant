@@ -54,6 +54,31 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://interview:interview@localhost:5432/interview_guide
         run: alembic upgrade head
 
+  evals:
+    name: Offline evaluation scoring
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Re-score snapshots and diff against baselines
+        run: |
+          python -m evals.run_all --compare
+          for suite in job_match rag_retrieval interview_scoring; do
+            python -m evals.compare --suite "$suite" --check --min-delta -0.02
+          done
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest

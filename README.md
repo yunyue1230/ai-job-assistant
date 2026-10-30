@@ -182,16 +182,46 @@ Provider API keys are read from local environment variables only. Users cannot
 enter or retrieve keys in Settings. Embeddings use an independent
 `EMBEDDING_PROVIDER` selection and `EMBEDDING_PROVIDERS` registry (or the
 single-provider `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, and
-`EMBEDDING_MODEL` settings). The selected embedding model must return exactly
-`EMBEDDING_DIMENSIONS`; changing dimensions also requires a matching database
-vector-column migration/rebuild.
+`EMBEDDING_MODEL` settings). The shipped `.env.example` points chat and
+embeddings at Alibaba Cloud Bailian's OpenAI-compatible endpoint, so both reuse
+the existing OpenAI SDK paths without code changes:
 
-Realtime speech uses `AI_BAILIAN_API_KEY` for DashScope Qwen realtime ASR
+```dotenv
+# https://<api-host>/compatible-mode/v1, for example
+# https://dashscope.aliyuncs.com/compatible-mode/v1
+EMBEDDING_BASE_URL=https://<api-host>/compatible-mode/v1
+EMBEDDING_MODEL=text-embedding-v3
+EMBEDDING_DIMENSIONS=1024
+EMBEDDING_BATCH_SIZE=10
+```
+
+`EMBEDDING_BATCH_SIZE` controls how many texts are sent per request; lower it if
+a provider rejects the batch. The selected embedding model must return exactly
+`EMBEDDING_DIMENSIONS`, and the vector column is created with that width when
+migration `0003` runs, so switching model or dimensions requires recreating the
+column and re-ingesting documents:
+
+```bash
+docker compose exec postgres psql -U interview -d interview_guide -c \
+  "DROP INDEX IF EXISTS ix_document_chunks_embedding_hnsw; \
+   TRUNCATE document_chunks, knowledge_documents CASCADE; \
+   ALTER TABLE document_chunks ALTER COLUMN embedding TYPE vector(1024); \
+   CREATE INDEX ix_document_chunks_embedding_hnsw ON document_chunks USING hnsw (embedding vector_cosine_ops);"
+```
+
+On a disposable local stack, `docker compose down -v` followed by
+`docker compose up -d` is simpler.
+
+Realtime speech uses `AI_BAILIAN_API_KEY` — the same DashScope key as
+`EMBEDDING_API_KEY` — for Qwen realtime ASR
 (`QWEN_ASR_MODEL`) and TTS (`QWEN_TTS_MODEL`, `QWEN_TTS_VOICE`). The browser
 streams 16 kHz mono PCM to the authenticated backend WebSocket; the backend
 transcribes it, calls the configured active chat provider for an interviewer
-reply, and streams 24 kHz PCM speech back. This is a local-Docker setup; the
-DashScope account must have access to the configured realtime models.
+reply, and streams 24 kHz PCM speech back. Realtime speech uses the DashScope
+SDK rather than the OpenAI-compatible endpoint and defaults to
+`wss://dashscope.aliyuncs.com/api-ws/v1/realtime`; set `QWEN_REALTIME_URL` to
+point it at another gateway. This is a local-Docker setup; the DashScope
+account must have access to the configured realtime models.
 
 The React client has sign-in/registration and working screens for resume
 analysis, knowledge-base uploads and grounded Q&A, text interviews, schedule
@@ -209,4 +239,17 @@ Build the frontend with Node.js:
 ```bash
 npm ci --prefix frontend
 npm --prefix frontend run build
+```
+
+## Evaluation
+
+`evals/` holds fixed sample sets for the three AI features. A suite can run
+`--live` against the configured providers to refresh a prediction snapshot, or
+offline to re-score an existing snapshot for free; CI always runs offline.
+See [evals/README.md](evals/README.md) for the workflow:
+
+```bash
+python -m evals.run_all --live          # refresh snapshots (costs tokens)
+python -m evals.compare --suite rag_retrieval --promote
+python -m evals.run_all --compare       # offline re-score + baseline diff
 ```

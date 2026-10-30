@@ -1,5 +1,7 @@
 from functools import lru_cache
+from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -49,8 +51,10 @@ class Settings(BaseSettings):
     embedding_base_url: str = "https://api.openai.com/v1"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = Field(default=1536, gt=0, le=2000)
+    embedding_batch_size: int = Field(default=64, gt=0)
     ai_bailian_api_key: str | None = None
     qwen_asr_model: str = "qwen3-asr-flash-realtime"
+    qwen_realtime_url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
     qwen_tts_model: str = "qwen3-tts-flash-realtime"
     qwen_tts_voice: str = "Cherry"
     rag_chunk_size: int = Field(default=1000, gt=0)
@@ -96,4 +100,12 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    # pydantic-settings reads .env into the model but never exports it, so
+    # provider keys resolved with os.getenv() would be missing whenever the app
+    # runs outside Compose. Mirroring the file into os.environ (without
+    # overriding real environment variables) makes both paths behave the same.
+    env_file = Settings.model_config.get("env_file")
+    if isinstance(env_file, str) and Path(env_file).exists():
+        load_dotenv(env_file, override=False)
+    return settings
