@@ -2,22 +2,52 @@
 
     python -m evals.compare --suite job_match
     python -m evals.compare --suite job_match --promote
-    python -m evals.compare --suite rag_retrieval --check --min-delta -0.02
+    python -m evals.compare --suite rag_retrieval --check
+
+Regression detection is driven by ``evals.core.metrics.METRIC_POLICY``: each
+metric declares whether higher or lower is better, and how far it may move
+before the run is failed (``gate``), merely reported (``warn``), or only
+recorded (``info``). ``--min-delta`` stays as the fallback for metrics that
+have no policy yet.
 """
 
 from __future__ import annotations
 
 import argparse
 import shutil
+from collections.abc import Sequence
 
-from evals.core.reporting import (
-    compare_reports,
-    load_report,
-    print_comparison,
-    report_path,
+from evals.core.metrics import (
+    MetricVerdict,
+    evaluate_report,
+    gating_regressions,
+    warnings,
 )
+from evals.core.reporting import load_report, report_path
 
 SUITES = ("job_match", "rag_retrieval", "interview_scoring")
+
+
+def _render(value: float | int | None) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.4f}" if isinstance(value, float) else str(value)
+
+
+def print_verdicts(suite: str, verdicts: Sequence[MetricVerdict]) -> None:
+    print(f"\n=== {suite}: candidate vs baseline ===")
+    header = (
+        f"  {'metric':<28} {'baseline':>10} {'current':>10} {'delta':>10} "
+        f"{'threshold':>10}  {'decision':<10} policy"
+    )
+    print(header)
+    for verdict in verdicts:
+        print(
+            f"  {verdict.name:<28} {_render(verdict.baseline):>10} "
+            f"{_render(verdict.candidate):>10} {_render(verdict.delta):>10} "
+            f"{_render(verdict.threshold):>10}  {verdict.decision:<10} "
+            f"{verdict.policy_label}"
+        )
 
 
 def main() -> int:
@@ -27,13 +57,13 @@ def main() -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="exit non-zero when a metric regressed beyond --min-delta",
+        help="exit non-zero when a gated metric regressed beyond its policy",
     )
     parser.add_argument(
         "--min-delta",
         type=float,
         default=-0.02,
-        help="smallest acceptable change per metric (default -0.02)",
+        help="fallback tolerance for metrics with no policy (default -0.02)",
     )
     args = parser.parse_args()
 
@@ -47,20 +77,22 @@ def main() -> int:
         print(f"no baseline for {args.suite}; run with --promote after a good run")
         return 0
 
-    rows = compare_reports(load_report(baseline_path), load_report(latest_path))
-    print_comparison(args.suite, rows)
+    verdicts = evaluate_report(
+        load_report(baseline_path), load_report(latest_path), args.min_delta
+    )
+    print_verdicts(args.suite, verdicts)
+
+    soft = warnings(verdicts)
+    if soft:
+        print(f"\nWARNING: {', '.join(soft)} (structural change, not a failure)")
 
     if not args.check:
         return 0
-    regressions = [
-        name
-        for name, row in rows.items()
-        if row["delta"] is not None and row["delta"] < args.min_delta
-    ]
+    regressions = gating_regressions(verdicts)
     if regressions:
         print(f"\nREGRESSION: {', '.join(regressions)}")
         return 1
-    print("\nno regression beyond the configured threshold")
+    print("\nno regression beyond the configured policy")
     return 0
 
 
