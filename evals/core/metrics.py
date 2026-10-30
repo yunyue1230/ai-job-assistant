@@ -199,7 +199,10 @@ METRIC_POLICY: dict[str, MetricPolicy] = {
     # -- job_match --------------------------------------------------------
     "schema_valid_rate": _higher_ratio(),
     "score_mae": _lower_score(rel_tolerance=0.10),
-    "score_within_tolerance": _higher_ratio(),
+    # One of 25 samples is worth 0.04, and two live runs of the same code
+    # moved this by 0.08 with nothing else changing, so the band has to clear
+    # two flipped samples or CI fails on sampling noise alone.
+    "score_within_tolerance": _higher_ratio(abs_tolerance=0.10, rel_tolerance=0.10),
     "matched_skill_recall": _higher_ratio(),
     "missing_skill_recall": _higher_ratio(),
     # -- rag_retrieval ----------------------------------------------------

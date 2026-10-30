@@ -17,6 +17,7 @@ import math
 from pathlib import Path
 from typing import Any, Sequence
 
+from evals.compare import report_suite
 from evals.core.datasets import dataset_path, load_jsonl, resolve_relevant_chunks
 from evals.core.metrics import mean_reciprocal_rank, recall_at_k_average
 from evals.core.predictions import (
@@ -27,11 +28,7 @@ from evals.core.predictions import (
 )
 from evals.core.reporting import (
     RunMetadata,
-    compare_reports,
-    load_report,
-    print_comparison,
     print_report,
-    report_path,
     write_report,
 )
 
@@ -159,10 +156,8 @@ def main() -> int:
     path = write_report(SUITE, metrics, metadata)
     print_report(path, metrics, metadata)
 
-    baseline_path = report_path(SUITE, "baseline")
-    if args.compare and baseline_path.exists():
-        rows = compare_reports(load_report(baseline_path), load_report(path))
-        print_comparison(SUITE, rows)
+    if args.compare:
+        report_suite(SUITE)
     return 0
 
 

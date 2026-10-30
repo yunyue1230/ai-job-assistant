@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from evals import compare
+from evals import provider_stats as evals_provider_stats
 from evals.core.metrics import (
     METRIC_POLICY,
     evaluate_metric,
@@ -225,6 +226,147 @@ class ReportEvaluationTests(unittest.TestCase):
         by_name = {verdict.name: verdict for verdict in verdicts}
         self.assertTrue(by_name["mrr"].gating)
         self.assertEqual(by_name["samples"].decision, "unscored")
+
+
+class NoiseCalibrationTests(unittest.TestCase):
+    """Tolerances must clear the noise two live runs actually produced.
+
+    Same code, same datasets, same providers; the only thing that moved is
+    sampling. If a policy fails on this, CI fails on nothing.
+    """
+
+    # Live runs of 2026-10-30, 25 samples each.
+    JOB_MATCH_RUN_1 = {
+        "samples": 25,
+        "schema_valid_rate": 1.0,
+        "score_mae": 12.56,
+        "score_within_tolerance": 0.76,
+        "matched_skill_recall": 0.9867,
+        "missing_skill_recall": 1.0,
+    }
+    JOB_MATCH_RUN_2 = {
+        "samples": 25,
+        "schema_valid_rate": 1.0,
+        "score_mae": 12.0,
+        "score_within_tolerance": 0.68,
+        "matched_skill_recall": 0.9867,
+        "missing_skill_recall": 1.0,
+    }
+    # Embeddings are deterministic: the second run reproduced the first exactly.
+    RAG_RUN_1 = {
+        "samples": 26,
+        "scored_samples": 26,
+        "recall@1": 0.3974,
+        "recall@3": 0.7372,
+        "recall@5": 0.8462,
+        "mrr": 0.6667,
+    }
+
+    def _compare(self, baseline: dict, candidate: dict) -> dict[str, object]:
+        verdicts = evaluate_report(
+            {"metrics": baseline}, {"metrics": candidate}, -0.02
+        )
+        return {verdict.name: verdict for verdict in verdicts}
+
+    def test_job_match_noise_is_not_a_regression(self) -> None:
+        self.assertEqual(
+            gating_regressions(
+                evaluate_report(
+                    {"metrics": self.JOB_MATCH_RUN_1},
+                    {"metrics": self.JOB_MATCH_RUN_2},
+                    -0.02,
+                )
+            ),
+            [],
+        )
+
+    def test_tolerance_band_covers_the_observed_swing(self) -> None:
+        # 0.76 -> 0.68 is two of 25 samples flipping, worth 0.08.
+        verdicts = self._compare(self.JOB_MATCH_RUN_1, self.JOB_MATCH_RUN_2)
+        swing = abs(
+            self.JOB_MATCH_RUN_2["score_within_tolerance"]
+            - self.JOB_MATCH_RUN_1["score_within_tolerance"]
+        )
+        self.assertGreaterEqual(verdicts["score_within_tolerance"].threshold, swing)
+
+    def test_rag_is_reproducible_so_no_regression(self) -> None:
+        self.assertEqual(
+            gating_regressions(
+                evaluate_report(
+                    {"metrics": self.RAG_RUN_1}, {"metrics": self.RAG_RUN_1}, -0.02
+                )
+            ),
+            [],
+        )
+
+    def test_a_real_drop_still_fails_after_widening(self) -> None:
+        # Widening the band for noise must not swallow an actual regression.
+        broken = dict(self.JOB_MATCH_RUN_1, score_within_tolerance=0.40)
+        verdicts = self._compare(self.JOB_MATCH_RUN_1, broken)
+        self.assertEqual(verdicts["score_within_tolerance"].decision, "regression")
+
+
+class SharedReportingTests(unittest.TestCase):
+    """run_all --compare and each runner go through compare.report_suite."""
+
+    def _write(self, directory: Path, name: str, metrics: dict) -> None:
+        path = directory / f"{name}.json"
+        path.write_text(json.dumps({"metrics": metrics}), encoding="utf-8")
+
+    def test_reports_verdicts_when_a_baseline_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(root, "baseline", {"mrr": 0.8})
+            self._write(root, "latest", {"mrr": 0.6})
+            with mock.patch.object(
+                compare, "report_path", lambda _suite, kind="latest": root / f"{kind}.json"
+            ):
+                with mock.patch("sys.stdout", new=StringIO()):
+                    verdicts = compare.report_suite("rag_retrieval")
+        self.assertIsNotNone(verdicts)
+        self.assertEqual([v.name for v in verdicts], ["mrr"])
+        self.assertTrue(verdicts[0].gating)
+
+    def test_says_so_when_there_is_no_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with mock.patch.object(
+                compare, "report_path", lambda _suite, kind="latest": root / f"{kind}.json"
+            ):
+                with mock.patch("sys.stdout", new=StringIO()) as out:
+                    self.assertIsNone(compare.report_suite("rag_retrieval"))
+        self.assertIn("no baseline", out.getvalue())
+
+
+class ProviderStatsHistoryTests(unittest.TestCase):
+    def test_collects_previous_live_runs(self) -> None:
+        rows = evals_provider_stats.collect(REPORTS_DIR)
+        interview = [row for row in rows if row["suite"] == "interview_scoring"]
+        self.assertTrue(interview, "expected the recorded interview runs on disk")
+        for row in interview:
+            self.assertIn("calls", row["stats"])
+            self.assertGreater(row["stats"]["calls"], 0)
+
+    def test_reads_a_temporary_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "run.json").write_text(
+                json.dumps(
+                    {
+                        "metadata": {
+                            "suite": "job_match",
+                            "created_at": "2026-10-30T00:00:00Z",
+                            "mode": "live",
+                            "provider_stats": {"calls": 25, "retries": 1},
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "noisy.json").write_text("not json", encoding="utf-8")
+            rows = evals_provider_stats.collect(root)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["stats"]["calls"], 25)
 
 
 if __name__ == "__main__":

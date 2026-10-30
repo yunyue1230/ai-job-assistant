@@ -50,6 +50,30 @@ def print_verdicts(suite: str, verdicts: Sequence[MetricVerdict]) -> None:
         )
 
 
+def report_suite(suite: str, min_delta: float = -0.02) -> list[MetricVerdict] | None:
+    """Print one suite's verdicts, or say why there is nothing to print.
+
+    Every caller -- this CLI, ``run_all --compare`` and each suite runner --
+    goes through here, so a run is always judged with the same policy and
+    printed in the same shape.
+    """
+    baseline_path = report_path(suite, "baseline")
+    if not baseline_path.exists():
+        print(
+            f"\n=== {suite}: no baseline yet ===\n"
+            f"  run 'python -m evals.compare --suite {suite} --promote' after a good run"
+        )
+        return None
+    verdicts = evaluate_report(
+        load_report(baseline_path), load_report(report_path(suite, "latest")), min_delta
+    )
+    print_verdicts(suite, verdicts)
+    soft = warnings(verdicts)
+    if soft:
+        print(f"WARNING: {', '.join(soft)} (structural change, not a failure)")
+    return verdicts
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", required=True, choices=SUITES)
@@ -73,18 +97,9 @@ def main() -> int:
         shutil.copyfile(latest_path, baseline_path)
         print(f"promoted {latest_path} -> {baseline_path}")
         return 0
-    if not baseline_path.exists():
-        print(f"no baseline for {args.suite}; run with --promote after a good run")
+    verdicts = report_suite(args.suite, args.min_delta)
+    if verdicts is None:
         return 0
-
-    verdicts = evaluate_report(
-        load_report(baseline_path), load_report(latest_path), args.min_delta
-    )
-    print_verdicts(args.suite, verdicts)
-
-    soft = warnings(verdicts)
-    if soft:
-        print(f"\nWARNING: {', '.join(soft)} (structural change, not a failure)")
 
     if not args.check:
         return 0
