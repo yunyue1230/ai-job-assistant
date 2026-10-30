@@ -1,0 +1,23 @@
+{
+  "suite": "interview_scoring",
+  "metadata": {
+    "suite": "interview_scoring",
+    "mode": "live",
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "dataset": "/Users/caoyuerong/Documents/CU-MSc/self-project/ai-job-assistant/evals/datasets/interview_scoring.jsonl",
+    "sample_count": 3,
+    "created_at": "2026-10-29T07:04:07Z",
+    "git_sha": "4a0af927eeb0bddd8b9a9e12687ffab4ccdf2dd7",
+    "snapshot": "/Users/caoyuerong/Documents/CU-MSc/self-project/ai-job-assistant/evals/snapshots/interview_scoring.deepseek-chat.latest.jsonl",
+    "notes": "baseline: deepseek-chat seed samples"
+  },
+  "metrics": {
+    "samples": 3,
+    "schema_valid_rate": 1.0,
+    "discrimination_rate": 1.0,
+    "mean_gap": 73.66666666666667,
+    "median_good_score": 92.0,
+    "score_spread_median": 0.0
+  }
+}

@@ -1,0 +1,34 @@
+# Retrieval queries with content anchors (rq-01 ... rq-26).
+# Labels are short verbatim quotes from evals/raw_docs, never chunk ids: chunk
+# ids point at different text as soon as --chunk-size/--overlap changes.
+# resolve_relevant_chunks() raises when an anchor matches nothing, so a rebuild
+# with a much larger chunk size fails loudly instead of scoring zero.
+#
+# type: direct | paraphrase | distractor | cross_chunk
+# A query with two anchors expects several relevant chunks (cross-chunk recall).
+{"id": "rq-01", "type": "direct", "query": "pgvector 里 HNSW 索引的 m 参数默认是多少，调大有什么代价", "relevant_anchors": ["the max number of connections per layer"], "notes": "single fact in the HNSW index options list"}
+{"id": "rq-02", "type": "direct", "query": "IVFFlat 索引的 lists 参数该设成多少", "relevant_anchors": ["for up to 1M rows"], "notes": "lists heuristic; IVFFlat prose competes with the HNSW section"}
+{"id": "rq-03", "type": "direct", "query": "为什么 MySQL 用 B+ 树做索引而不是 B 树", "relevant_anchors": ["B+ 树只在叶子节点存数据"], "notes": "fanout argument in the interview notes"}
+{"id": "rq-04", "type": "direct", "query": "BatchNorm 和 LayerNorm 的区别是什么，为什么 Transformer 用 LayerNorm", "relevant_anchors": ["BatchNorm 在 batch 维度上算均值方差"], "notes": "normalisation section"}
+{"id": "rq-05", "type": "direct", "query": "混合检索里 RRF 是怎么融合两路结果的", "relevant_anchors": ["RRF 只看排名不看分数"], "notes": "fusion formula explanation"}
+{"id": "rq-06", "type": "direct", "query": "kubelet 多久向 API server 上报一次节点状态，用哪个参数控制", "relevant_anchors": ["Specifies how often kubelet posts"], "notes": "node status update frequency flag"}
+{"id": "rq-07", "type": "direct", "query": "node controller 多久检查一次节点的健康状态", "relevant_anchors": ["checks the state of each node every 5 seconds"], "notes": "node controller monitoring paragraph"}
+{"id": "rq-08", "type": "direct", "query": "Redis 的 appendfsync 有哪几种配置，分别会丢多少数据", "relevant_anchors": ["最多丢 1 秒"], "notes": "AOF fsync policy"}
+{"id": "rq-09", "type": "direct", "query": "document_chunks 表里存了哪些字段，向量字段是什么类型", "relevant_anchors": ["chunk_index, text, embedding"], "notes": "schema section of the design doc"}
+{"id": "rq-10", "type": "paraphrase", "query": "语料量变大以后想让检索结果更准，查询的时候可以调哪个参数", "relevant_anchors": ["查询时的候选队列长度"], "notes": "ef_search asked without naming it"}
+{"id": "rq-11", "type": "paraphrase", "query": "两个 worker 同时抢到同一条任务，怎么保证只处理一次", "relevant_anchors": ["影响行数为 0 就直接跳过"], "notes": "conditional update described operationally"}
+{"id": "rq-12", "type": "paraphrase", "query": "大量缓存同时失效把数据库打挂了，这种情况怎么防", "relevant_anchors": ["雪崩：大量 key 同时过期"], "notes": "cache avalanche without using the term"}
+{"id": "rq-13", "type": "paraphrase", "query": "面试被问模型离线指标涨了但线上没涨，该怎么回答", "relevant_anchors": ["我的答法按顺序排"], "notes": "offline-online gap; the same phrase appears in a resume as a distractor"}
+{"id": "rq-14", "type": "paraphrase", "query": "怎么判断模型是背下了训练集而不是真的学会了", "relevant_anchors": ["验证损失先降后升"], "notes": "overfitting diagnosis without the word overfitting"}
+{"id": "rq-15", "type": "distractor", "query": "分布式锁的 value 为什么不能随便写，释放的时候要注意什么", "relevant_anchors": ["比对 value 再删"], "notes": "Redis mentioned in the JD, the resume and the notes; only the notes explain the unique value"}
+{"id": "rq-16", "type": "distractor", "query": "多个租户共用一个向量索引会有什么风险", "relevant_anchors": ["sharing an approximate index between tenants"], "notes": "pgvector multitenancy vs the design doc's tenant isolation"}
+{"id": "rq-17", "type": "distractor", "query": "带 where 过滤条件的向量查询为什么返回的条数不够", "relevant_anchors": ["queries with filtering can return less results"], "notes": "filter-then-scan behaviour explained in two places"}
+{"id": "rq-18", "type": "distractor", "query": "简历上传之后到解析完成，中间经过了哪些进程和队列", "relevant_anchors": ["上传接口只做三件事"], "notes": "queue architecture; job matching and interview docs mention workers too"}
+{"id": "rq-19", "type": "distractor", "query": "这个后端岗位要不要求候选人懂 Kubernetes 编排", "relevant_anchors": ["了解 Kubernetes 的基本编排概念"], "notes": "the SRE JD and several resumes also mention Kubernetes"}
+{"id": "rq-20", "type": "distractor", "query": "AOF 和 RDB 应该怎么选，生产上一般怎么配", "relevant_anchors": ["RDB 做冷备和快速恢复"], "notes": "Redis README talks about Redis but not persistence trade-offs"}
+{"id": "rq-21", "type": "distractor", "query": "岗位要求三年以上 Python 经验，我的实习经历算不算得上", "relevant_anchors": ["3 年以上 Python 后端经验"], "notes": "requirement line vs two resumes that quantify years"}
+{"id": "rq-22", "type": "cross_chunk", "query": "建 HNSW 索引很慢又吃内存，ef_construction 和内存要怎么看，能加快吗", "relevant_anchors": ["the size of the dynamic candidate list for constructing", "Indexes build significantly faster"], "notes": "answer spans the index-options chunk and the index-build-time chunk"}
+{"id": "rq-23", "type": "cross_chunk", "query": "HNSW 和 IVFFlat 在建索引速度、内存占用和召回上怎么取舍", "relevant_anchors": ["creates a multilayer graph", "faster build times and uses less memory"], "notes": "two intro paragraphs, one per index type"}
+{"id": "rq-24", "type": "cross_chunk", "query": "任务被重投时消费端要怎么保证不重复处理，有哪几种做法", "relevant_anchors": ["消费前查去重表", "影响行数为 0 就直接跳过"], "notes": "dedup table in the notes, conditional update in the design doc"}
+{"id": "rq-25", "type": "cross_chunk", "query": "切块策略、召回指标和标注方式要怎么配合，才能搭出可复现的检索评测", "relevant_anchors": ["先按标题切", "静默的 0 分比崩溃更难查"], "notes": "chunking section plus the labelling pitfalls section"}
+{"id": "rq-26", "type": "direct", "query": "为什么向量检索返回的结果条数会比 limit 少", "relevant_anchors": ["Results are limited by the size of the dynamic candidate list"], "notes": "candidate-list truncation, the classic 'fewer rows than expected' question"}

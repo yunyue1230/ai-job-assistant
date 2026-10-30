@@ -1,0 +1,23 @@
+{
+  "suite": "job_match",
+  "metadata": {
+    "suite": "job_match",
+    "mode": "live",
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "dataset": "/Users/caoyuerong/Documents/CU-MSc/self-project/ai-job-assistant/evals/datasets/job_match.jsonl",
+    "sample_count": 25,
+    "created_at": "2026-10-30T01:37:07Z",
+    "git_sha": "4a0af927eeb0bddd8b9a9e12687ffab4ccdf2dd7",
+    "snapshot": "/Users/caoyuerong/Documents/CU-MSc/self-project/ai-job-assistant/evals/snapshots/job_match.deepseek-chat.latest.jsonl",
+    "notes": "baseline: 25 samples with hand-set score centres"
+  },
+  "metrics": {
+    "samples": 25,
+    "schema_valid_rate": 1.0,
+    "score_mae": 12.56,
+    "score_within_tolerance": 0.76,
+    "matched_skill_recall": 0.9866666666666666,
+    "missing_skill_recall": 1.0
+  }
+}

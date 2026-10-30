@@ -1,6 +1,6 @@
 # AI Interview Guide (Python)
 
-![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/caoyuerong/ai-job-assistant/actions/workflows/ci.yml/badge.svg)
 
 This repository is evolving from a Streamlit resume/JD matching demo into a
 Python interview-preparation platform. The existing Streamlit app remains
