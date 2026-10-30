@@ -221,6 +221,26 @@ class JobMatchServiceTests(unittest.TestCase):
         self.assertEqual(result["match_score"], 78)
         self.assertEqual(calls, 2)
 
+    def test_runner_can_own_the_counters(self) -> None:
+        # An eval run passes its own stats in so retries are counted per run.
+        import services.job_match_service as service
+
+        class FakeChatOpenAI:
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
+            def invoke(self, messages: list[object]) -> object:
+                return type("Reply", (), {"content": json.dumps(JOB_MATCH)})()
+
+        stats = CompletionStats()
+        with mock.patch.object(service, "ChatOpenAI", FakeChatOpenAI):
+            service.analyze_job_match(
+                "Backend role", "A resume", api_key="k", base_url="http://x",
+                model_name="m", stats=stats,
+            )
+        self.assertEqual(stats.calls, 1)
+        self.assertEqual(stats.retries, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

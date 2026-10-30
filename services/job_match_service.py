@@ -5,7 +5,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_openai import ChatOpenAI
 
 from backend.app.ai.model_providers import active_provider_credentials
-from backend.app.ai.structured_output import StructuredCompletion
+from backend.app.ai.structured_output import CompletionStats, StructuredCompletion
 from prompts.job_match import create_job_match_prompt
 from schemas.job_match import JobMatchAnalysis
 
@@ -23,6 +23,7 @@ def analyze_job_match(
     api_key: str | None = None,
     base_url: str | None = None,
     model_name: str | None = None,
+    stats: CompletionStats | None = None,
 ) -> dict:
     if api_key is None and base_url is None and model_name is None:
         api_key, base_url, model_name = active_provider_credentials()
@@ -41,7 +42,7 @@ def analyze_job_match(
             messages = [*messages, HumanMessage(content=extra)]
         return str(model.invoke(messages).content)
 
-    completion = StructuredCompletion(send, name="job_match")
+    completion = StructuredCompletion(send, name="job_match", stats=stats)
     analysis = completion.complete(
         "",
         json.dumps({"job_description": job_description, "resume": resume}),

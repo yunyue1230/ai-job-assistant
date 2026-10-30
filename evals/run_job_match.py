@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from evals.compare import report_suite
 from evals.core.datasets import dataset_path, load_jsonl
 from evals.core.metrics import (
     list_recall,
@@ -25,11 +26,7 @@ from evals.core.predictions import (
 )
 from evals.core.reporting import (
     RunMetadata,
-    compare_reports,
-    load_report,
-    print_comparison,
     print_report,
-    report_path,
     write_report,
 )
 
@@ -37,8 +34,11 @@ SUITE = "job_match"
 DEFAULT_TOLERANCE = 12
 
 
-def run_live(dataset: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str, str]:
+def run_live(
+    dataset: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str, str, dict[str, Any]]:
     from backend.app.ai.model_providers import list_provider_info
+    from backend.app.ai.structured_output import CompletionStats
     from backend.app.core.config import get_settings
     from services.job_match_service import analyze_job_match
 
@@ -51,9 +51,14 @@ def run_live(dataset: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str, 
             break
 
     records: list[dict[str, Any]] = []
+    # One set of counters for the whole run, so retries and provider failures
+    # are visible per run instead of per call.
+    stats = CompletionStats()
     for sample in dataset:
         try:
-            result = analyze_job_match(sample["job_description"], sample["resume"])
+            result = analyze_job_match(
+                sample["job_description"], sample["resume"], stats=stats
+            )
             records.append(
                 {
                     "id": sample["id"],
@@ -67,7 +72,7 @@ def run_live(dataset: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str, 
             records.append(
                 {"id": sample["id"], "error": f"{type(error).__name__}: {error}"}
             )
-    return records, provider, model
+    return records, provider, model, stats.as_dict()
 
 
 def score(
@@ -129,9 +134,10 @@ def main() -> int:
     args = parser.parse_args()
 
     dataset = load_jsonl(args.dataset)
+    provider_stats: dict[str, Any] | None = None
     if args.live:
         try:
-            predictions, provider, model = run_live(dataset)
+            predictions, provider, model, provider_stats = run_live(dataset)
         except RuntimeError as error:
             print(f"Chat provider is not configured: {error}")
             return 1
@@ -161,14 +167,13 @@ def main() -> int:
         len(dataset),
         snapshot=str(snapshot),
         notes=args.notes,
+        provider_stats=provider_stats,
     )
     path = write_report(SUITE, metrics, metadata)
     print_report(path, metrics, metadata)
 
-    baseline_path = report_path(SUITE, "baseline")
-    if args.compare and baseline_path.exists():
-        rows = compare_reports(load_report(baseline_path), load_report(path))
-        print_comparison(SUITE, rows)
+    if args.compare:
+        report_suite(SUITE)
     return 0
 
 

@@ -183,10 +183,13 @@ class StructuredCompletion:
         send: Callable[[str, str, str | None], str],
         *,
         name: str = "completion",
+        stats: CompletionStats | None = None,
     ) -> None:
         self._send = send
         self.name = name
-        self.stats = CompletionStats()
+        # Callers that need to report the counters (an eval run, say) can own
+        # them; everyone else gets a fresh set.
+        self.stats = stats if stats is not None else CompletionStats()
 
     def request(self, system: str, user: str, extra: str | None = None) -> str:
         """One provider request, counted as an attempt whatever the outcome.
