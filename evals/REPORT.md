@@ -270,7 +270,7 @@ total calls=122 retries=1 rescued=1 final_failures=0 retry_latency=2.09s retry_r
 | rag_retrieval | 26 查询 / 186 段 | recall@1 0.397 · recall@3 0.737 · recall@5 0.846 · mrr 0.667 |
 | interview_scoring | 16 | 合格率 1.0 · 区分度 1.0 · 档位顺序 1.0 · 好坏分差 70.06 · 好/中/偏题/差 = 88/55/18/16.5 |
 
-单元测试 **135 passed**；CI 序列（`run_all --compare` + 三个 `compare --check`）全部 exit=0。
+单元测试 **159 passed**；CI 序列（`run_all --compare` + 三个 `compare --check`）全部 exit=0。
 
 ## 5. 经验教训
 
@@ -299,6 +299,10 @@ total calls=122 retries=1 rescued=1 final_failures=0 retry_latency=2.09s retry_r
 | `bd8968a` | 按实测噪声校准容差 + 统一 compare 输出口径 |
 | `bc5a1f7` | job_match 记账 + `provider_stats` 历史汇总 |
 | `08f64c0` | 三次 noise-sample live 产物留档 |
+| `04958ab` | 测试日志噪声：`tests/__init__.py` + 命令统一为 `-t .` |
+| `ca102b1` | 本报告入库 |
+| `72de87d` | `compare --promote` 护栏：`mode`/覆盖率不合格就拒绝，需 `--force` |
+| `3117466` | P0 任务可靠性：原子抢占 + 有限退避重试 + 租约回收（见第 8 节） |
 
 ## 7. 待办与建议
 
@@ -317,3 +321,47 @@ total calls=122 retries=1 rescued=1 final_failures=0 retry_latency=2.09s retry_r
   发现，两个 `*.latest.json` 的 `mode` 都是 `offline`（对应的 `*.baseline.json`
   仍是 live，指标不受影响）。也就是说下次改完代码想 promote，必须先跑一次 live
   刷新 latest——这正是护栏要拦的场景。
+
+## 8. 阶段三：任务可靠性（P0 第二项）
+
+评测解决「AI 输出好不好」，这一阶段解决「任务会不会做重、卡死、说不清为什么失败」。
+改动集中在 `backend/app/workers/consumer.py`，配套迁移 `0008_task_retry_columns`。
+
+### 8.1 三道防线
+
+| 防线 | 做法 | 证据（新增 `tests/test_task_reliability.py`） |
+|---|---|---|
+| 不重复做 | 只有 `UPDATE ... WHERE status IN ('queued','failed')` 能把任务抢走；抢不到就退出 | 重复投递只跑 1 次模型；5 个 worker 并发也只跑 1 次；`completed` 的任务永不重跑 |
+| 有限重试 | 暂时失败原地重试，退避 2s → 4s → 上限 30s，到 `max_attempts`（默认 3）为止；失败信息记下异常类型 | 失败一次后成功（attempts=2、延迟 `[2.0]`）；一直失败则 3 次调用后 failed、错误含 `RuntimeError` 与「3 attempts」 |
+| 崩溃可恢复 | 任务停在 `processing` 超过租约（默认 300s）视为被遗弃，重新入队；`attempts` 不清零 | 600s 前的 processing 任务被回收并重新入队；5s 前的不动；刚被抢占的任务因 `updated_at` 刷新而不动 |
+
+两条刻意的例外：
+
+- **解析上传文件不重试**。同样一份字节再解析一次也不会成功，重试只是白花 attempts
+  （`test_unreadable_resume_is_not_retried`、`test_unparseable_document_is_not_retried`）。
+- **手动重试退还次数预算**。`POST /analyses/{id}/retry` 把 `attempts` 归零，否则用户
+  点的重试会因为预算已耗尽而直接失败（`test_retry_refunds_the_attempt_budget`）。
+
+### 8.2 顺带修掉的线上隐患
+
+写上面那个测试时发现：重试接口在 `UPDATE` 之后直接读 `job.updated_at`（该列由数据库
+`onupdate` 填充），在 async 会话里会触发惰性加载并抛 `MissingGreenlet`，也就是
+**重试接口会 500**。生产环境之所以没暴露，只是因为入队时碰了 `job.id` 顺带触发了一次
+refresh——纯属巧合。已在两个重试接口补 `await session.refresh(...)`。
+
+### 8.3 结果
+
+- 单元测试 **142 → 159**（新增 16 条可靠性测试 + 1 条 API 重试预算测试，并改写
+  `test_worker_records_failure_for_retry` 以反映新的重试语义）。
+- 单测耗时反而下降：原来的失败用例会真睡 2s+4s，现在注入假 `sleeper`。
+- 三套评测基线不变，CI 序列仍全绿（本次改动不触碰评分路径）。
+- `alembic heads` = `0008_task_retry_columns`；本次未跑 Postgres 实测（本机 Docker
+  未启动），由 CI 的 `alembic upgrade head` 覆盖。
+
+### 8.4 仍未覆盖
+
+- **真实并发**：SQLite 上的并发抢占不等于 Postgres 的锁行为，需要在真实库上跑一次
+  多 worker 压测才能算验证过。
+- **长任务的租约**：`updated_at` 只在写库时刷新，没有独立心跳；一个跑满 300s 以上的
+  分析任务仍可能被误判为遗弃（当前模型调用远小于这个量级）。
+- **成本上限**：重试有次数上限，但没有按用户/时间窗的调用配额。

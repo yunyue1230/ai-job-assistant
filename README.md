@@ -137,6 +137,28 @@ are parsed and embedded by the worker; their status is `queued`, `processing`,
 `ready`, or `failed`. Chat answers are grounded in the top matching chunks and
 return source labels, filenames, optional page numbers, and excerpts.
 
+## Worker reliability
+
+Analysis and ingestion tasks are claimed, retried and recovered the same way:
+
+- **One worker per task.** A task leaves `queued`/`failed` only through
+  `UPDATE ... WHERE status IN ('queued','failed')`. A duplicate delivery or a
+  racing worker matches no rows and stops, so the model or embedding call runs
+  once.
+- **Bounded retry.** A transient failure retries in place with an exponential
+  backoff (`WORKER_RETRY_BASE_DELAY_SECONDS`, doubled each attempt and capped by
+  `WORKER_RETRY_MAX_DELAY_SECONDS`) until the row's `max_attempts` (3 by
+  default) is spent; the failure then records the exception type in
+  `error_message`. Parsing an uploaded file is *not* retried: the same bytes
+  fail the same way.
+- **Lease recovery.** A task still `processing` for longer than
+  `WORKER_LEASE_TIMEOUT_SECONDS` is treated as abandoned and requeued by a
+  worker sweep every `WORKER_RECOVERY_SWEEP_SECONDS`. Its `attempts` count is
+  kept, so a crashing worker cannot retry forever.
+- **Manual retry refunds the budget.** `POST /analyses/{id}/retry` and the
+  document equivalent reset `attempts` to 0, so a user-triggered retry gets the
+  full number of attempts again.
+
 The application assumes the configured embedding model returns the configured
 vector dimension (1536 by default, at most 2000 for the configured HNSW index).
 The pgvector extension and cosine HNSW index are enabled by the Alembic
