@@ -231,7 +231,7 @@ as a static Vite bundle and served through Nginx in Compose.
 ## Tests
 
 ```bash
-conda run -n ai-job-assistant python -m unittest discover -s tests -v
+conda run -n ai-job-assistant python -m unittest discover -s tests -t . -v
 ```
 
 Build the frontend with Node.js:
