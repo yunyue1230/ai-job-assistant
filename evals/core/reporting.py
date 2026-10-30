@@ -51,6 +51,9 @@ class RunMetadata:
     git_sha: str | None = None
     snapshot: str | None = None
     notes: str | None = None
+    # Call accounting for live runs (calls, retries, failures). Kept out of
+    # metrics so a provider hiccup never shows up as a metric regression.
+    provider_stats: dict[str, Any] | None = None
 
     @classmethod
     def build(
@@ -63,6 +66,7 @@ class RunMetadata:
         sample_count: int,
         snapshot: str | None = None,
         notes: str | None = None,
+        provider_stats: dict[str, Any] | None = None,
     ) -> "RunMetadata":
         return cls(
             suite=suite,
@@ -75,6 +79,7 @@ class RunMetadata:
             git_sha=git_sha(),
             snapshot=snapshot,
             notes=notes,
+            provider_stats=provider_stats,
         )
 
 
@@ -127,6 +132,10 @@ def print_report(path: Path, metrics: dict[str, Any], metadata: RunMetadata) -> 
     for name, value in metrics.items():
         rendered = f"{value:.4f}" if isinstance(value, float) else str(value)
         print(f"  {name:<32} {rendered}")
+    if metadata.provider_stats:
+        print("  -- provider calls --")
+        for name, value in metadata.provider_stats.items():
+            print(f"  {name:<32} {value}")
     print(f"  report: {path}")
 
 

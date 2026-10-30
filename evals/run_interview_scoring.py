@@ -43,7 +43,7 @@ DEFAULT_REPEATS = 3
 
 def run_live(
     dataset: list[dict[str, Any]], repeats: int
-) -> tuple[list[dict[str, Any]], str, str]:
+) -> tuple[list[dict[str, Any]], str, str, dict[str, Any]]:
     from backend.app.ai.interview_engine import OpenAIInterviewEngine
     from backend.app.ai.model_providers import list_provider_info
     from backend.app.core.config import get_settings
@@ -97,7 +97,7 @@ def run_live(
             records.append(
                 {"id": sample["id"], "error": f"{type(error).__name__}: {error}"}
             )
-    return records, provider, model
+    return records, provider, model, engine.stats.as_dict()
 
 
 def score(dataset: list[dict[str, Any]], predictions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -172,9 +172,12 @@ def main() -> int:
     args = parser.parse_args()
 
     dataset = load_jsonl(args.dataset)
+    provider_stats: dict[str, Any] | None = None
     if args.live:
         try:
-            predictions, provider, model = run_live(dataset, args.repeats)
+            predictions, provider, model, provider_stats = run_live(
+                dataset, args.repeats
+            )
         except RuntimeError as error:
             print(f"Chat provider is not configured: {error}")
             return 1
@@ -202,6 +205,7 @@ def main() -> int:
         len(dataset),
         snapshot=str(snapshot),
         notes=args.notes,
+        provider_stats=provider_stats,
     )
     path = write_report(SUITE, metrics, metadata)
     print_report(path, metrics, metadata)
