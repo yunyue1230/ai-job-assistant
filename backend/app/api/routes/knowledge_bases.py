@@ -327,8 +327,10 @@ async def retry_knowledge_document(
         )
     document.status = "queued"
     document.error_message = None
+    document.attempts = 0
     await session.commit()
     await _enqueue_document(document, session, queue)
+    await session.refresh(document)
     return _document_read(document)
 
 

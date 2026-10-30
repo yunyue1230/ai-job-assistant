@@ -293,6 +293,12 @@ async def retry_analysis(
     job.status = "queued"
     job.error_message = None
     job.completed_at = None
+    # A manual retry gets the full attempt budget back; the worker's automatic
+    # retries are meant for transient failures, not for a job already exhausted.
+    job.attempts = 0
     await session.commit()
     await _enqueue_or_mark_failed(job, session, queue)
+    # updated_at is filled by the database on UPDATE, so the row has to be
+    # re-read before it can be serialised.
+    await session.refresh(job)
     return _analysis_read(job, filename)

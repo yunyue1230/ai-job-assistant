@@ -77,10 +77,16 @@ class AnalysisWorkerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(job.result, {"match_score": 88})
             self.assertEqual(job.attempts, 1)
 
-    async def test_worker_records_failure_for_retry(self) -> None:
+    async def test_worker_retries_then_records_failure(self) -> None:
         job_id = await self._create_job()
+        attempts: list[int] = []
+        delays: list[float] = []
+
+        async def sleeper(delay: float) -> None:
+            delays.append(delay)
 
         def fail_analysis(_: str, __: str) -> dict:
+            attempts.append(1)
             raise RuntimeError("provider unavailable")
 
         await process_analysis_job(
@@ -88,6 +94,7 @@ class AnalysisWorkerTests(unittest.IsolatedAsyncioTestCase):
             session_factory=self.session_factory,
             storage_factory=lambda: MemoryStorage(b"Python developer"),
             analyzer=fail_analysis,
+            sleeper=sleeper,
         )
 
         async with self.session_factory() as session:
@@ -95,8 +102,12 @@ class AnalysisWorkerTests(unittest.IsolatedAsyncioTestCase):
                 select(AnalysisJob).where(AnalysisJob.id == job_id)
             )
             self.assertEqual(job.status, "failed")
-            self.assertEqual(job.attempts, 1)
-            self.assertIsNotNone(job.error_message)
+            # Three calls: the first attempt plus two backed-off retries.
+            self.assertEqual(len(attempts), 3)
+            self.assertEqual(job.attempts, 3)
+            self.assertEqual(len(delays), 2)
+            self.assertLess(delays[0], delays[1])
+            self.assertIn("RuntimeError", job.error_message or "")
 
 
 if __name__ == "__main__":

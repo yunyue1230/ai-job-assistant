@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     rag_chunk_size: int = Field(default=1000, gt=0)
     rag_chunk_overlap: int = Field(default=150, ge=0)
     rag_top_k: int = Field(default=5, ge=1, le=20)
+    # Worker reliability. Per-task limits live on the row (max_attempts); these
+    # control the shape of the retry and how a crashed worker is detected.
+    worker_retry_base_delay_seconds: float = Field(default=2.0, gt=0)
+    worker_retry_max_delay_seconds: float = Field(default=30.0, gt=0)
+    worker_lease_timeout_seconds: int = Field(default=300, ge=1)
+    worker_recovery_sweep_seconds: int = Field(default=60, ge=1)
 
     @model_validator(mode="after")
     def validate_chunk_overlap(self) -> "Settings":

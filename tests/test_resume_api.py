@@ -174,6 +174,37 @@ class ResumeApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 415)
         self.assertEqual(self.queue.job_ids, [])
 
+    async def test_retry_refunds_the_attempt_budget(self) -> None:
+        upload = await self.client.post(
+            "/api/v1/resumes",
+            headers=self.auth_headers,
+            data={"job_description": "Looking for a Python engineer."},
+            files={"file": ("resume.txt", b"Python developer", "text/plain")},
+        )
+        job_id = upload.json()["id"]
+        async with self.session_factory() as session:
+            job = await session.scalar(
+                select(AnalysisJob).where(AnalysisJob.id == UUID(job_id))
+            )
+            job.status = "failed"
+            job.attempts = job.max_attempts
+            await session.commit()
+
+        response = await self.client.post(
+            f"/api/v1/analyses/{job_id}/retry", headers=self.auth_headers
+        )
+        self.assertEqual(response.status_code, 202)
+
+        async with self.session_factory() as session:
+            job = await session.scalar(
+                select(AnalysisJob).where(AnalysisJob.id == UUID(job_id))
+            )
+            self.assertEqual(job.status, "queued")
+            # Otherwise the worker would see an exhausted budget and fail the
+            # manual retry without ever calling the model.
+            self.assertEqual(job.attempts, 0)
+        self.assertEqual(self.queue.job_ids[-1], job_id)
+
 
 if __name__ == "__main__":
     unittest.main()

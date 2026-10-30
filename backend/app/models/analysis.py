@@ -24,6 +24,9 @@ class AnalysisJob(Base):
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # How many times this job may run in total, including the first attempt.
+    # Manual retry resets ``attempts``, not this ceiling.
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
