@@ -1,12 +1,20 @@
+import json
+
+from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_openai import ChatOpenAI
 
 from backend.app.ai.model_providers import active_provider_credentials
+from backend.app.ai.structured_output import StructuredCompletion
 from prompts.job_match import create_job_match_prompt
 from schemas.job_match import JobMatchAnalysis
 
+# The parser stays for its format instructions, which shape the prompt; the
+# parsing itself goes through StructuredCompletion so a reply with trailing
+# prose or a forgotten field is handled the same way as in the interview engine.
 parser = JsonOutputParser(pydantic_object=JobMatchAnalysis)
 prompt = create_job_match_prompt(parser.get_format_instructions())
+
 
 def analyze_job_match(
     job_description: str,
@@ -26,7 +34,17 @@ def analyze_job_match(
         model=model_name,
         temperature=0.3,
     )
-    result = (prompt | model | parser).invoke(
-        {"job_description": job_description, "resume": resume}
+
+    def send(_system: str, user: str, extra: str | None) -> str:
+        messages = prompt.invoke(json.loads(user)).to_messages()
+        if extra:
+            messages = [*messages, HumanMessage(content=extra)]
+        return str(model.invoke(messages).content)
+
+    completion = StructuredCompletion(send, name="job_match")
+    analysis = completion.complete(
+        "",
+        json.dumps({"job_description": job_description, "resume": resume}),
+        JobMatchAnalysis,
     )
-    return JobMatchAnalysis.model_validate(result).model_dump()
+    return analysis.model_dump()

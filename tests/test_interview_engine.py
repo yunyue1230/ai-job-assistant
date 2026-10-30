@@ -206,8 +206,11 @@ class SchemaRetryTests(unittest.TestCase):
         self.assertEqual(engine.stats.retry_successes, 1)
         self.assertEqual(engine.stats.final_failures, 0)
 
-        # The retry has to name the missing field and the type it expects.
-        repair_prompt = engine.calls[1]["messages"][1]["content"]  # type: ignore[index]
+        # The retry has to name the missing field and the type it expects, and
+        # it travels as its own message rather than being appended to the prompt.
+        retry_messages = engine.calls[1]["messages"]  # type: ignore[index]
+        self.assertEqual(len(retry_messages), 3)
+        repair_prompt = retry_messages[-1]["content"]  # type: ignore[index]
         self.assertIn("Missing field(s): follow_up_question", repair_prompt)
         self.assertIn("follow_up_question (str | None)", repair_prompt)
 
