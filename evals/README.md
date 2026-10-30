@@ -53,6 +53,9 @@ python -m evals.run_rag_retrieval --live
 python -m evals.run_interview_scoring --live --repeats 3
 
 # 2. Promote the first good run as the baseline you will diff against.
+#    Promotion is refused unless <suite>.latest.json is a complete live run:
+#    'run_all --compare' overwrites it with a free offline re-score, and
+#    promoting that would make the baseline forget where the numbers came from.
 python -m evals.compare --suite job_match --promote
 python -m evals.compare --suite rag_retrieval --promote
 python -m evals.compare --suite interview_scoring --promote
@@ -61,7 +64,8 @@ python -m evals.compare --suite interview_scoring --promote
 python -m evals.run_rag_retrieval --live --notes "chunk 1000 -> 600"
 python -m evals.compare --suite rag_retrieval
 
-# 4. Re-score an old snapshot with new labels, for free.
+# 4. Re-score an old snapshot with new labels, for free. This overwrites
+#    <suite>.latest.json, so re-run step 1 before promoting anything.
 python -m evals.run_job_match --snapshot evals/snapshots/job_match.deepseek-chat.latest.jsonl
 
 # 5. Chunk-size experiment. The corpus is built with the production splitter,

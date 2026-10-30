@@ -309,4 +309,11 @@ total calls=122 retries=1 rescued=1 final_failures=0 retry_latency=2.09s retry_r
 - ~~**测试输出被日志污染**~~（已处理）：新增 `tests/__init__.py`，把 root logger 挂上
   `NullHandler` 并设为 `CRITICAL`；命令改为 `python -m unittest discover -s tests -t .`
   （`-t .` 才能让 `tests` 作为包被导入、初始化生效）。CI 与 README 已同步。
-- **评测运行会覆盖 `latest`**：这是最容易踩的坑，promote 前务必确认报告来源。
+- ~~**评测运行会覆盖 `latest`**~~（已加护栏）：`evals/core/reporting.py` 的
+  `promotion_blockers()` 检查三件事——`mode` 必须是 `live`、`scored_samples`
+  等于 `samples`、`schema_valid_rate` 为 1.0；`compare --promote` 命中任何一条就
+  拒绝（exit 2）并打印原因，只有 `--force` 才放行并同时打印 WARNING。
+- **仓库里 `job_match` / `rag_retrieval` 的 `latest` 已经是 offline**：加护栏时才
+  发现，两个 `*.latest.json` 的 `mode` 都是 `offline`（对应的 `*.baseline.json`
+  仍是 live，指标不受影响）。也就是说下次改完代码想 promote，必须先跑一次 live
+  刷新 latest——这正是护栏要拦的场景。

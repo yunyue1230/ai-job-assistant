@@ -1,8 +1,12 @@
+import contextlib
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from evals.compare import promote_suite
 from evals.core.datasets import load_jsonl, resolve_relevant_chunks
 from evals.core.metrics import (
     list_f1,
@@ -16,7 +20,7 @@ from evals.core.metrics import (
     valid_rate,
     within_tolerance_rate,
 )
-from evals.core.reporting import compare_reports
+from evals.core.reporting import compare_reports, promotion_blockers
 from evals.run_interview_scoring import score as score_interview
 from evals.run_job_match import score as score_job_match
 
@@ -243,6 +247,95 @@ class DatasetIntegrityTests(unittest.TestCase):
             path.write_text("{not json}\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 load_jsonl(path)
+
+
+class PromotionGuardTests(unittest.TestCase):
+    """The baseline is what CI diffs against, so promoting must be deliberate."""
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.reports = Path(directory.name)
+        patcher = mock.patch("evals.core.reporting.REPORTS_DIR", self.reports)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_latest(
+        self,
+        suite: str,
+        *,
+        mode: str = "live",
+        metrics: dict[str, object] | None = None,
+    ) -> Path:
+        path = self.reports / f"{suite}.latest.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "suite": suite,
+                    "metadata": {"suite": suite, "mode": mode},
+                    "metrics": metrics if metrics is not None else {"samples": 10},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_a_complete_live_run_has_no_blockers(self) -> None:
+        report = {
+            "metadata": {"mode": "live"},
+            "metrics": {
+                "samples": 25,
+                "scored_samples": 25,
+                "schema_valid_rate": 1.0,
+            },
+        }
+        self.assertEqual(promotion_blockers(report), [])
+
+    def test_an_offline_rescore_is_blocked(self) -> None:
+        # run_all --compare overwrites <suite>.latest.json, so the newest report
+        # is often a free re-score rather than a fresh provider run.
+        report = {"metadata": {"mode": "offline"}, "metrics": {"samples": 25}}
+        blockers = promotion_blockers(report)
+        self.assertEqual(len(blockers), 1)
+        self.assertIn("mode='offline'", blockers[0])
+
+    def test_partial_coverage_is_blocked(self) -> None:
+        report = {
+            "metadata": {"mode": "live"},
+            "metrics": {"samples": 25, "scored_samples": 3},
+        }
+        blockers = promotion_blockers(report)
+        self.assertTrue(any("3/25" in blocker for blocker in blockers))
+
+    def test_schema_failures_are_blocked(self) -> None:
+        report = {
+            "metadata": {"mode": "live"},
+            "metrics": {"schema_valid_rate": 0.9375},
+        }
+        blockers = promotion_blockers(report)
+        self.assertTrue(any("schema_valid_rate" in b for b in blockers))
+
+    def test_promote_refuses_and_keeps_the_old_baseline(self) -> None:
+        baseline = self.reports / "job_match.baseline.json"
+        baseline.write_text('{"metrics": {}}', encoding="utf-8")
+        self.write_latest("job_match", mode="offline")
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(promote_suite("job_match"), 2)
+        self.assertEqual(baseline.read_text(encoding="utf-8"), '{"metrics": {}}')
+
+    def test_promote_force_overwrites_the_baseline(self) -> None:
+        latest = self.write_latest("job_match", mode="offline")
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(promote_suite("job_match", force=True), 0)
+        baseline = self.reports / "job_match.baseline.json"
+        self.assertEqual(baseline.read_text(encoding="utf-8"), latest.read_text(encoding="utf-8"))
+
+    def test_promote_without_any_run_says_what_to_do(self) -> None:
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(promote_suite("job_match"), 2)
+        self.assertIn("--live", output.getvalue())
 
 
 if __name__ == "__main__":

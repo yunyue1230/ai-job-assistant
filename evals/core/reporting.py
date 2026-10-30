@@ -87,6 +87,51 @@ def report_path(suite: str, kind: str = "latest") -> Path:
     return REPORTS_DIR / f"{suite}.{kind}.json"
 
 
+# Only a live run carries provider metadata and fresh predictions, so it is the
+# only mode that may become a baseline without an explicit override.
+PROMOTABLE_MODE = "live"
+
+
+def promotion_blockers(report: dict[str, Any]) -> list[str]:
+    """Reasons why ``report`` should not quietly become the baseline.
+
+    Two mistakes are worth stopping, both of which produce a baseline that
+    looks fine but is not:
+
+    - promoting an offline re-score. ``run_all --compare`` overwrites
+      ``<suite>.latest.json``, so the newest report is often a free re-score of
+      an old snapshot: its metadata records the re-scoring commit, not the run
+      that produced the predictions.
+    - promoting a run that did not score every sample. Missing predictions do
+      not raise; they just shrink the sample the metrics describe.
+    """
+    metadata = report.get("metadata") or {}
+    metrics = report.get("metrics") or {}
+    blockers: list[str] = []
+
+    mode = metadata.get("mode")
+    if mode != PROMOTABLE_MODE:
+        if mode == "offline":
+            detail = "offline re-scores overwrite <suite>.latest.json"
+        else:
+            detail = "only a live run carries provider metadata"
+        blockers.append(
+            f"mode={mode!r} ({detail}); rerun the suite with --live before promoting"
+        )
+
+    samples = metrics.get("samples")
+    scored = metrics.get("scored_samples")
+    if isinstance(samples, int) and isinstance(scored, int) and scored < samples:
+        blockers.append(f"only {scored}/{samples} samples were scored")
+
+    valid_rate = metrics.get("schema_valid_rate")
+    if isinstance(valid_rate, (int, float)) and not isinstance(valid_rate, bool):
+        if valid_rate < 1:
+            blockers.append(f"schema_valid_rate={valid_rate:.4f} (below 1.0)")
+
+    return blockers
+
+
 def write_report(suite: str, metrics: dict[str, Any], metadata: RunMetadata) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     payload = {"suite": suite, "metadata": asdict(metadata), "metrics": metrics}

@@ -4,6 +4,10 @@
     python -m evals.compare --suite job_match --promote
     python -m evals.compare --suite rag_retrieval --check
 
+``--promote`` refuses to promote anything that is not a complete live run,
+because the baseline is what CI diffs against. Pass ``--force`` when the
+promotion really is deliberate.
+
 Regression detection is driven by ``evals.core.metrics.METRIC_POLICY``: each
 metric declares whether higher or lower is better, and how far it may move
 before the run is failed (``gate``), merely reported (``warn``), or only
@@ -23,7 +27,7 @@ from evals.core.metrics import (
     gating_regressions,
     warnings,
 )
-from evals.core.reporting import load_report, report_path
+from evals.core.reporting import load_report, promotion_blockers, report_path
 
 SUITES = ("job_match", "rag_retrieval", "interview_scoring")
 
@@ -74,10 +78,46 @@ def report_suite(suite: str, min_delta: float = -0.02) -> list[MetricVerdict] | 
     return verdicts
 
 
+def promote_suite(suite: str, *, force: bool = False) -> int:
+    """Copy the latest report over the baseline, unless it should not be one."""
+    latest_path = report_path(suite, "latest")
+    baseline_path = report_path(suite, "baseline")
+    if not latest_path.exists():
+        print(f"\n=== {suite}: nothing to promote ===")
+        print(f"  {latest_path} does not exist; run the suite with --live first")
+        return 2
+
+    blockers = promotion_blockers(load_report(latest_path))
+    if blockers and not force:
+        print(f"\n=== {suite}: promotion refused ===")
+        for blocker in blockers:
+            print(f"  {blocker}")
+        print(
+            f"  baseline is what CI diffs against; "
+            f"add --force to promote {latest_path} anyway"
+        )
+        return 2
+
+    shutil.copyfile(latest_path, baseline_path)
+    print(f"promoted {latest_path} -> {baseline_path}")
+    for blocker in blockers:
+        print(f"  WARNING: promoted anyway ({blocker})")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", required=True, choices=SUITES)
-    parser.add_argument("--promote", action="store_true", help="make latest the baseline")
+    parser.add_argument(
+        "--promote",
+        action="store_true",
+        help="make latest the baseline (refused unless it is a complete live run)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="promote even when --promote would refuse the latest report",
+    )
     parser.add_argument(
         "--check",
         action="store_true",
@@ -91,12 +131,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    baseline_path = report_path(args.suite, "baseline")
-    latest_path = report_path(args.suite, "latest")
     if args.promote:
-        shutil.copyfile(latest_path, baseline_path)
-        print(f"promoted {latest_path} -> {baseline_path}")
-        return 0
+        return promote_suite(args.suite, force=args.force)
     verdicts = report_suite(args.suite, args.min_delta)
     if verdicts is None:
         return 0
